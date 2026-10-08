@@ -10,9 +10,9 @@ Esegui dalla radice del progetto, dopo aver committato tutte le modifiche. La ve
 
 ### Comandi brevi con pnpm o npm
 
-Se hai Node.js e pnpm, usa uno dei seguenti comandi dalla radice:
+Se hai Node.js e pnpm, usa uno dei seguenti comandi dalla radice. I comandi pnpm/npm e GitHub CLI (`gh`) in questa guida sono identici su macOS (Terminale: zsh/bash) e Windows (PowerShell); sono riportati in blocchi di testo comuni:
 
-```powershell
+```text
 pnpm version:patch
 pnpm version:minor
 pnpm version:major
@@ -22,7 +22,7 @@ Ogni comando incrementa la versione, esegue i test, produce la build per il sist
 
 Puoi aggiungere le opzioni dello script:
 
-```powershell
+```text
 pnpm version:minor --dry-run
 pnpm version:minor --push
 pnpm version:minor --release
@@ -36,7 +36,7 @@ Con npm gli equivalenti sono `npm run version:minor` e `npm run version:minor --
 
 ### Comandi Python diretti
 
-In PowerShell:
+Windows (PowerShell):
 
 ```powershell
 # Anteprima: controlli preliminari e piano, nessuna modifica né test/build
@@ -49,7 +49,20 @@ In PowerShell:
 .\.venv\Scripts\python.exe scripts/release.py patch --build --push
 ```
 
-I due comandi di rilascio sono alternative: eseguirli entrambi incrementa due volte la versione. Su macOS sostituisci `.\.venv\Scripts\python.exe` con `./.venv/bin/python`.
+macOS (Terminale):
+
+```bash
+# Anteprima: controlli preliminari e piano, nessuna modifica né test/build
+./.venv/bin/python scripts/release.py patch --dry-run
+
+# Incremento, test, build per il sistema corrente, commit e tag locali
+./.venv/bin/python scripts/release.py patch --build
+
+# In alternativa: stessi passaggi con pubblicazione su origin
+./.venv/bin/python scripts/release.py patch --build --push
+```
+
+Per ciascun sistema, i due comandi di rilascio sono alternative: eseguirli entrambi incrementa due volte la versione. I percorsi espliciti della `.venv` funzionano senza attivarla.
 
 `--build` usa il comando configurato in `[tool.release].build`; i test in `[tool.release].checks` vengono eseguiti anche senza `--build`. `{python}` indica l'interprete con cui esegui lo script, quindi usa quello della `.venv`. I comandi vengono eseguiti dopo l'aggiornamento dei file di versione, prima del commit. Test e build devono lasciare invariati i sorgenti; gli artefatti devono essere esclusi da Git.
 
@@ -59,13 +72,13 @@ I due comandi di rilascio sono alternative: eseguirli entrambi incrementa due vo
 
 Installa GitHub CLI (`gh`) e autenticala una volta con:
 
-```powershell
+```text
 gh auth login
 ```
 
 Dopo aver committato le modifiche, scegli uno di questi comandi:
 
-```powershell
+```text
 pnpm version:patch --release
 pnpm version:minor --release
 pnpm version:major --release
@@ -79,11 +92,11 @@ Per AppDraft gli allegati sono configurati in `[tool.release.assets]`: `dist/App
 
 Per verificare il piano e l'accesso a GitHub senza build né pubblicazione:
 
-```powershell
+```text
 pnpm version:minor --release --dry-run
 ```
 
-L'anteprima richiede comunque una working tree pulita e fa controlli di lettura sul remoto e su GitHub. Con Python diretto l'equivalente è `python scripts/release.py minor --release`, usando l'interprete della `.venv`.
+L'anteprima richiede comunque una working tree pulita e fa controlli di lettura sul remoto e su GitHub. Con Python diretto, la stessa anteprima è `./.venv/bin/python scripts/release.py minor --release --dry-run` su macOS e `.\.venv\Scripts\python.exe scripts/release.py minor --release --dry-run` su Windows (PowerShell).
 
 Il comportamento usa [GitHub CLI per creare le release](https://cli.github.com/manual/gh_release_create), [caricare gli allegati](https://cli.github.com/manual/gh_release_upload) e [pubblicare la bozza](https://cli.github.com/manual/gh_release_edit).
 
@@ -97,10 +110,18 @@ Riconosce un solo file tra:
 - `package.json`: versione SemVer; aggiorna anche `package-lock.json` e `npm-shrinkwrap.json`, se presenti, senza modificare le versioni delle dipendenze. Un `package.json` privo di `version`, usato solo per alias di sviluppo, viene ignorato dal riconoscimento automatico. Non richiede npm e non esegue gli hook npm `preversion`, `version` o `postversion`. I JSON possono essere riformattati, mantenendo indentazione e terminatori di riga.
 - `VERSION`: file di testo contenente soltanto una versione SemVer.
 
-Se più file sono presenti, specifica `--version-file`. Per un client annidato:
+Se più file sono presenti, specifica `--version-file`. Per un client annidato, usa il Python del progetto. Esempi con una `.venv` già creata:
+
+macOS (Terminale):
+
+```bash
+./.venv/bin/python scripts/release.py minor --version-file recipestudio.client/package.json --dry-run
+```
+
+Windows (PowerShell):
 
 ```powershell
-python scripts/release.py minor --version-file recipestudio.client/package.json --dry-run
+.\.venv\Scripts\python.exe scripts/release.py minor --version-file recipestudio.client/package.json --dry-run
 ```
 
 Tutti i file di versione devono essere già tracciati da Git e trovarsi dentro `--root`. Nei monorepo il controllo della working tree riguarda l'intero repository; i comandi di test/build vengono eseguiti dentro `--root`. Versioni dinamiche, workspace npm coordinati e sincronizzazione di lock Python non sono gestiti automaticamente.
@@ -119,10 +140,16 @@ Opzioni aggiuntive:
 | `--check JSON` | Aggiunge un comando di verifica; ripetibile |
 | `--build-command JSON` | Esegue un comando di build al posto di quello configurato |
 
-I comandi sono array JSON di argomenti, senza shell implicita. Sono ammessi i segnaposto `{python}` e `{version}`. Esempio PowerShell:
+I comandi sono array JSON di argomenti, senza shell implicita. Sono ammessi i segnaposto `{python}` e `{version}`. Esempio Windows (PowerShell):
 
 ```powershell
-python scripts/release.py patch --check '["{python}", "-m", "pytest", "-q"]'
+.\.venv\Scripts\python.exe scripts/release.py patch --check '["{python}", "-m", "pytest", "-q"]'
+```
+
+Lo stesso esempio su macOS (Terminale):
+
+```bash
+./.venv/bin/python scripts/release.py patch --check '["{python}", "-m", "pytest", "-q"]'
 ```
 
 Per comandi npm su Windows usa l'eseguibile `npm.cmd`, su macOS/Linux `npm`; il comando deve essere disponibile nel PATH. Se serve una shell per un tuo script, dichiarala esplicitamente nell'array. Non copiare la configurazione di test/build di AppDraft in progetti che usano altri strumenti.

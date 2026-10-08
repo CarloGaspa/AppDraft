@@ -25,6 +25,8 @@ python -m venv .venv
 .\.venv\Scripts\python.exe app.py
 ```
 
+Se `python` non è disponibile ma hai il launcher `py`, verifica la versione con `py -3 --version` e crea l’ambiente con `py -3 -m venv .venv`. Serve comunque Python 3.12+.
+
 Usare direttamente l'interprete della `.venv` evita di dipendere dall'attivazione e dalle regole di esecuzione degli script PowerShell. Se preferisci attivarla:
 
 ```powershell
@@ -40,25 +42,34 @@ Per gli avvii successivi basta:
 
 ## macOS: setup e primo avvio
 
-In Terminale, con Python 3.12+ disponibile come `python3`:
+In Terminale (zsh o bash), con Python 3.12+ disponibile come `python3`. Se usi Homebrew e Python non è ancora installato:
+
+```bash
+brew install python
+```
+
+Poi, dalla radice della repo:
 
 ```bash
 python3 --version
 python3 -m venv .venv
-./.venv/bin/python -m pip install -e ".[dev]"
-./.venv/bin/python app.py
+source .venv/bin/activate
+python -m pip install -e ".[dev]"
+python app.py
 ```
 
 Se `python3 --version` indica una versione precedente a 3.12, usa il percorso del tuo interprete 3.12+ per creare la `.venv`. La versione di sistema potrebbe non soddisfare il requisito.
 
-L'attivazione è opzionale:
+Su macOS, prima dell'attivazione usa `python3`: il comando `python` potrebbe non esistere e mostrare `zsh: command not found: python`. Dopo `source .venv/bin/activate`, nel terminale compare `(.venv)` e `python` indica l'interprete del progetto. Installa le dipendenze nella `.venv`, anche quando Python è installato con Homebrew.
+
+Per gli avvii successivi, dalla radice della repo:
 
 ```bash
 source .venv/bin/activate
 python app.py
 ```
 
-Per gli avvii successivi basta:
+L'attivazione è opzionale se usi direttamente l'interprete della `.venv`:
 
 ```bash
 ./.venv/bin/python app.py
@@ -68,9 +79,9 @@ Per gli avvii successivi basta:
 
 `pip install -e ".[dev]"` installa il progetto in modalità editable: le modifiche Python sono visibili al successivo avvio. Se vuoi solo eseguire dai sorgenti, usa `pip install -e .` senza l'extra.
 
-Dopo l'attivazione della `.venv` sono equivalenti:
+Dopo l'attivazione della `.venv` sono equivalenti su macOS (zsh/bash) e Windows (PowerShell):
 
-```bash
+```text
 python app.py
 appdraft
 ```
@@ -79,11 +90,18 @@ appdraft
 
 ## Opzioni e dati di sviluppo
 
-Con l'ambiente attivato:
+macOS (Terminale):
 
 ```bash
-python app.py --help
-python app.py --data-dir .local/test-data
+./.venv/bin/python app.py --help
+./.venv/bin/python app.py --data-dir .local/test-data
+```
+
+Windows (PowerShell):
+
+```powershell
+.\.venv\Scripts\python.exe app.py --help
+.\.venv\Scripts\python.exe app.py --data-dir .local/test-data
 ```
 
 `--data-dir` imposta una cartella alternativa per bozze, template personali e log. Le sottocartelle vengono create automaticamente e i template incorporati restano disponibili. È utile per provare l'app senza modificare le proprie risposte. `.local/` è esclusa da Git.

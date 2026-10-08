@@ -13,17 +13,60 @@ La build Windows viene prodotta in `dist/AppDraft.exe`; quella macOS in `dist/Ap
 
 ## Avvio rapido dai sorgenti
 
-Serve **Python 3.12+**. Dalla radice della repo crea un ambiente virtuale e installa le dipendenze seguendo il [setup Windows o macOS](docs/development.md). Con l'ambiente attivato:
+Serve **Python 3.12+**. Apri il terminale nella radice della repo, quella che contiene `app.py` e `pyproject.toml`, e segui i comandi per il tuo sistema. Per i dettagli vedi il [setup Windows o macOS](docs/development.md).
+
+### macOS (Terminale: zsh o bash)
+
+Su macOS usa `python3` per creare l'ambiente; `python` diventa disponibile dopo l'attivazione della `.venv`.
 
 ```bash
+python3 --version
+python3 -m venv .venv
+source .venv/bin/activate
 python -m pip install -e ".[dev]"
 python app.py
 ```
 
-L'extra `dev` include pytest e PyInstaller. Per verificare il progetto:
+Per gli avvii successivi, dalla radice della repo:
 
 ```bash
-python -m pytest -q
+source .venv/bin/activate
+python app.py
+```
+
+### Windows (PowerShell)
+
+Con Python 3.12+ disponibile come `python`:
+
+```powershell
+python --version
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+.\.venv\Scripts\python.exe app.py
+```
+
+Per gli avvii successivi, dalla radice della repo:
+
+```powershell
+.\.venv\Scripts\python.exe app.py
+```
+
+Su Windows questi comandi usano direttamente l'interprete della `.venv`, senza dover attivare script PowerShell. Se il comando `python` non è disponibile ma hai il launcher `py`, usa `py -3 --version` e `py -3 -m venv .venv`, verificando che la versione sia almeno 3.12.
+
+### Verificare il progetto
+
+L'extra `dev` include pytest e PyInstaller. Esegui i test con l'interprete del progetto:
+
+macOS:
+
+```bash
+./.venv/bin/python -m pytest -q
+```
+
+Windows (PowerShell):
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q
 ```
 
 ## Funzioni principali
