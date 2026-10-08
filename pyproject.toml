@@ -19,7 +19,7 @@ appdraft = "questionnaire_tool.application:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-questionnaire_tool = ["resources/templates/*.md"]
+questionnaire_tool = ["resources/templates/*.md", "resources/icons/*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

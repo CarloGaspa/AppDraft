@@ -12,6 +12,18 @@ Completa il [setup](development.md) con l'extra `dev`, che installa anche PyInst
 
 Non vengono inclusi i tuoi draft, template personali o export. Le risorse raccolte dalla spec provengono dal pacchetto Python, mentre i dati dell'utente sono conservati separatamente.
 
+## Icona dell'app
+
+`Icon.png` nella radice della repo è il sorgente grafico. Le versioni pronte per l'uso sono incluse in `src/questionnaire_tool/resources/icons/`: PNG per la finestra Qt, ICO multi-risoluzione per l'eseguibile Windows e ICNS per il bundle macOS.
+
+Se sostituisci `Icon.png`, rigenera gli asset con la `.venv` attivata, poi ricostruisci l'app:
+
+```bash
+python scripts/generate_icons.py
+```
+
+Lo script usa PySide6 e la libreria standard, conserva la trasparenza e richiede un'immagine quadrata. Non servono convertitori esterni. Gli asset generati vanno conservati nella repo e sono inclusi nel pacchetto: l'utente finale non deve avere `Icon.png` accanto all'app.
+
 ## Windows: creare il singolo eseguibile
 
 In PowerShell:

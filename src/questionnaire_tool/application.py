@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QStandardPaths
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from questionnaire_tool.services.data_service import prepare_data_directory
@@ -42,6 +43,7 @@ def main() -> int:
     app = QApplication(sys.argv[:1])
     app.setApplicationName("AppDraft")
     app.setOrganizationName("AppDraft")
+    app.setWindowIcon(QIcon(str(Path(__file__).resolve().parent / "resources" / "icons" / "appdraft.png")))
 
     try:
         directory = (arguments.data_dir or default_data_directory()).resolve()

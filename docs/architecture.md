@@ -45,10 +45,14 @@ La UI riceve modelli Python e non interpreta il frontmatter. Preview ed export c
 | `renderer/widgets/scroll_safe.py` | Editor che inoltrano la rotella al form |
 | `ui/` | Sidebar, form scrollabile, preview e coordinamento della finestra |
 | `resources/templates/` | Questionari iniziali inclusi nel pacchetto Python |
+| `resources/icons/` | Icone PNG, ICO e ICNS incluse nel pacchetto |
+| `scripts/generate_icons.py` | Generazione degli asset dall'icona sorgente `Icon.png` |
 | `tests/` | Verifiche del core, della distribuzione e dei flussi Qt |
 | `docs/` | Documentazione del progetto |
 
 I percorsi da `models/` a `resources/` sono relativi a `src/questionnaire_tool/`. I servizi usano Python e librerie di parsing/validazione; non dipendono da Qt.
+
+Lo script di generazione delle icone è invece relativo alla radice della repo. QApplication usa l'icona PNG globale, ereditata dalle finestre; la spec associa ICO all'eseguibile Windows e ICNS al bundle macOS.
 
 ## Template e risposte sono separati
 
