@@ -28,3 +28,7 @@ testpaths = ["tests"]
 [tool.release]
 checks = [["{python}", "-m", "pytest", "-q"]]
 build = ["{python}", "-m", "PyInstaller", "--noconfirm", "--clean", "AppDraft.spec"]
+
+[tool.release.assets]
+win32 = ["dist/AppDraft.exe"]
+darwin = ["dist/AppDraft.app"]

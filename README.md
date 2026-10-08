@@ -44,6 +44,6 @@ Il questionario **Technology Stack Assessment** comprende 20 sezioni, 39 domande
 | [Architettura](docs/architecture.md) | Struttura della repo, responsabilità, flusso dei dati e limiti |
 | [Template](docs/templates.md) | Formato YAML/Markdown, tipi di domanda, validazione e versioni |
 | [Packaging](docs/packaging.md) | Build del singolo `.exe` o della `.app`, distribuzione e verifica |
-| [Release](docs/releases.md) | Versioni, controlli, build opzionale, commit, tag e push |
+| [Release](docs/releases.md) | Versioni, controlli, build, commit, tag, push e GitHub Release con allegati |
 
 Ogni guida contiene i dettagli del proprio argomento. Aggiorna la documentazione insieme alle modifiche che cambiano comandi, formati o comportamento dell'app.

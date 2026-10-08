@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -145,3 +146,139 @@ def test_failed_atomic_push_keeps_local_release(repo):
     assert not git(repo, "status", "--porcelain")
     assert git(remote, "rev-parse", "refs/heads/main") == old_head
     assert not git(remote, "tag", "--list")
+
+
+@pytest.mark.parametrize("url", [
+    "https://github.com/owner/demo.git", "git@github.com:owner/demo.git",
+    "ssh://git@github.com/owner/demo.git", "https://github.com/owner/demo/",
+])
+def test_github_repository_from_push_url(url):
+    assert release.github_repository(url) == ("github.com", "owner/demo")
+
+
+@pytest.fixture
+def github_release_repo(repo, monkeypatch):
+    """Real local Git push; all gh commands are simulated, never networked."""
+    remote = repo.parent / (repo.name + "-remote.git")
+    git(repo, "init", "--bare", str(remote))
+    git(repo, "remote", "add", "origin", str(remote))
+    git(repo, "push", "origin", "main")
+    with (repo / "pyproject.toml").open("a", encoding="utf-8") as file:
+        file.write('\n[tool.release]\nassets = ["dist/demo.exe"]\n')
+    (repo / ".gitignore").write_text("dist/\n")
+    git(repo, "add", ".")
+    git(repo, "commit", "-m", "release configuration")
+    git(repo, "push", "origin", "main")
+    original_run = release.run
+    original_which = shutil.which
+    monkeypatch.setattr(release.shutil, "which", lambda name: "gh" if name == "gh" else original_which(name))
+    monkeypatch.setattr(release, "github_repository", lambda url: ("github.com", "owner/demo"))
+    calls = []
+    responses = {"permission": "WRITE", "existing": "", "fail": None}
+
+    def fake_run(args, root, *, capture=True):
+        if args[0] != "gh":
+            return original_run(args, root, capture=capture)
+        calls.append(args)
+        if args[1:3] == responses["fail"]:
+            raise RuntimeError("simulated gh failure")
+        if args[1:3] == ["repo", "view"]:
+            return json.dumps({"viewerPermission": responses["permission"], "isArchived": False})
+        if args[1] == "api":
+            return responses["existing"]
+        return ""
+
+    monkeypatch.setattr(release, "run", fake_run)
+    build = json.dumps([sys.executable, "-c",
+                        "from pathlib import Path; Path('dist').mkdir(exist_ok=True); Path('dist/demo.exe').write_bytes(b'build')"])
+    return repo, remote, calls, responses, build
+
+
+@pytest.mark.parametrize("level,tag", [("patch", "v1.2.4"), ("prepatch", "v1.2.4rc1")])
+def test_github_release_build_push_upload_then_publish(github_release_repo, level, tag):
+    repo, remote, calls, _, build = github_release_repo
+    assert release.main([level, "--root", str(repo), "--release", "--build-command", build]) == 0
+    writes = [args for args in calls if args[1] == "release"]
+    assert [args[2] for args in writes] == ["create", "upload", "edit"]
+    assert all(args[3] == tag and args[args.index("--repo") + 1] == "github.com/owner/demo" for args in writes)
+    assert "--verify-tag" in writes[0] and "--draft" in writes[0] and "--generate-notes" in writes[0]
+    assert ("--prerelease" in writes[0]) == level.startswith("pre")
+    assert "--draft=false" in writes[2]
+    assert ("--latest=false" if level.startswith("pre") else "--latest") in writes[2]
+    assert str(repo / "dist" / "demo.exe") in writes[1]
+    assert git(remote, "rev-parse", f"refs/tags/{tag}^{{commit}}") == git(repo, "rev-parse", "HEAD")
+
+
+def test_github_dry_run_has_no_build_commit_push_or_release(github_release_repo):
+    repo, remote, calls, _, build = github_release_repo
+    original = (repo / "pyproject.toml").read_bytes()
+    head = git(repo, "rev-parse", "HEAD")
+    assert release.main(["patch", "--root", str(repo), "--release", "--build-command", build, "--dry-run"]) == 0
+    assert (repo / "pyproject.toml").read_bytes() == original
+    assert not (repo / "dist").exists()
+    assert git(repo, "rev-parse", "HEAD") == git(remote, "rev-parse", "refs/heads/main") == head
+    assert not any(args[1] == "release" for args in calls)
+
+
+@pytest.mark.parametrize("failure", ["auth", "permission", "existing"])
+def test_github_preflight_errors_do_not_change_version(github_release_repo, failure):
+    repo, _, calls, responses, build = github_release_repo
+    if failure == "auth":
+        responses["fail"] = ["auth", "status"]
+    elif failure == "permission":
+        responses["permission"] = "READ"
+    else:
+        responses["existing"] = "v1.2.4"
+    original = (repo / "pyproject.toml").read_bytes()
+    assert release.main(["patch", "--root", str(repo), "--release", "--build-command", build]) == 1
+    assert (repo / "pyproject.toml").read_bytes() == original
+    assert not (repo / "dist").exists()
+    assert not any(args[1] == "release" for args in calls)
+    assert not git(repo, "tag", "--list")
+
+
+def test_missing_asset_rolls_back_before_commit_or_push(github_release_repo):
+    repo, remote, calls, _, _ = github_release_repo
+    original = (repo / "pyproject.toml").read_bytes()
+    head = git(repo, "rev-parse", "HEAD")
+    build = json.dumps([sys.executable, "-c", "pass"])
+    assert release.main(["patch", "--root", str(repo), "--release", "--build-command", build]) == 1
+    assert (repo / "pyproject.toml").read_bytes() == original
+    assert git(repo, "rev-parse", "HEAD") == git(remote, "rev-parse", "refs/heads/main") == head
+    assert not any(args[1] == "release" for args in calls)
+
+
+def test_failed_asset_upload_leaves_draft_and_retains_pushed_tag(github_release_repo, capsys):
+    repo, remote, calls, responses, build = github_release_repo
+    responses["fail"] = ["release", "upload"]
+    assert release.main(["patch", "--root", str(repo), "--release", "--build-command", build]) == 1
+    assert [args[2] for args in calls if args[1] == "release"] == ["create", "upload"]
+    assert git(remote, "rev-parse", "refs/tags/v1.2.4^{commit}") == git(repo, "rev-parse", "HEAD")
+    assert not git(repo, "status", "--porcelain")
+    assert "gh release view v1.2.4 --repo github.com/owner/demo" in capsys.readouterr().err
+
+
+def test_missing_github_cli_stops_before_build(github_release_repo, monkeypatch):
+    repo, _, calls, _, build = github_release_repo
+    monkeypatch.setattr(release.shutil, "which", lambda name: None)
+    original = (repo / "pyproject.toml").read_bytes()
+    assert release.main(["patch", "--root", str(repo), "--release", "--build-command", build]) == 1
+    assert (repo / "pyproject.toml").read_bytes() == original
+    assert not (repo / "dist").exists()
+    assert not calls
+
+
+def test_macos_app_is_archived_with_ditto(tmp_path, monkeypatch):
+    app = tmp_path / "Demo.app"
+    app.mkdir()
+    calls = []
+    monkeypatch.setattr(release, "sys", SimpleNamespace(platform="darwin"))
+
+    def ditto(args, root):
+        calls.append(args)
+        Path(args[-1]).write_bytes(b"zip")
+        return ""
+
+    monkeypatch.setattr(release, "run", ditto)
+    assert release.package_assets([app], tmp_path) == [tmp_path / "Demo.app.zip"]
+    assert calls[0][:5] == ["ditto", "-c", "-k", "--sequesterRsrc", "--keepParent"]

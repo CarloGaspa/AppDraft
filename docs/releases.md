@@ -25,9 +25,10 @@ Puoi aggiungere le opzioni dello script:
 ```powershell
 pnpm version:minor --dry-run
 pnpm version:minor --push
+pnpm version:minor --release
 ```
 
-Il primo mostra soltanto il piano; il secondo esegue il rilascio e invia anche commit e tag. Sono alternative, non passaggi da ripetere dopo un rilascio locale: per inviare una release già creata usa Git, senza incrementare nuovamente la versione.
+Il primo mostra soltanto il piano; il secondo esegue il rilascio e invia anche commit e tag; il terzo pubblica anche una GitHub Release con la build allegata. Sono alternative, non passaggi da ripetere dopo un rilascio locale: per inviare una release già creata usa Git e GitHub CLI, senza incrementare nuovamente la versione.
 
 Con npm gli equivalenti sono `npm run version:minor` e `npm run version:minor -- --push`. Per vedere tutte le opzioni: `pnpm version:minor --help`. Il launcher `scripts/release.mjs` funziona anche su macOS/Linux, selezionando `.venv/bin/python`.
 
@@ -52,7 +53,39 @@ I due comandi di rilascio sono alternative: eseguirli entrambi incrementa due vo
 
 `--build` usa il comando configurato in `[tool.release].build`; i test in `[tool.release].checks` vengono eseguiti anche senza `--build`. `{python}` indica l'interprete con cui esegui lo script, quindi usa quello della `.venv`. I comandi vengono eseguiti dopo l'aggiornamento dei file di versione, prima del commit. Test e build devono lasciare invariati i sorgenti; gli artefatti devono essere esclusi da Git.
 
-`--push` pubblica il branch corrente e soltanto il tag appena creato, con un unico push atomico. Il server deve supportarlo: non c'è un ripiego su due push separati. Non vengono caricate build, create release GitHub o prodotti installer. Per distribuire gli artefatti e verificarli sul sistema target vedi [packaging](packaging.md).
+`--push` pubblica il branch corrente e soltanto il tag appena creato, con un unico push atomico. Il server deve supportarlo: non c'è un ripiego su due push separati. Per creare anche una GitHub Release e allegare la build usa `--release`. Non vengono prodotti installer. Per verificare gli artefatti sul sistema target vedi [packaging](packaging.md).
+
+### Pubblicare su GitHub con un solo comando
+
+Installa GitHub CLI (`gh`) e autenticala una volta con:
+
+```powershell
+gh auth login
+```
+
+Dopo aver committato le modifiche, scegli uno di questi comandi:
+
+```powershell
+pnpm version:patch --release
+pnpm version:minor --release
+pnpm version:major --release
+```
+
+`--release` implica build e push. Prima di modificare la versione controlla autenticazione, accesso in scrittura al repository e assenza della nuova release, comprese le bozze. Il repository viene ricavato dall'URL di push del remoto scelto, anche usando `--remote`; non dipende dal repository predefinito di `gh`. Il remoto deve avere un solo URL di push HTTPS o SSH. Le credenziali devono consentire anche le operazioni sulle release.
+
+Il flusso è: aggiornamento versione → test → build → verifica artefatti → commit → tag → push atomico → GitHub Release in bozza con note generate → upload degli artefatti → pubblicazione. Le release stabili vengono marcate come Latest; le prerelease vengono marcate come tali e non diventano Latest. Le release precedenti restano disponibili. La bozza è un passaggio automatico: se tutto riesce, il comando la pubblica senza ulteriori operazioni manuali.
+
+Per AppDraft gli allegati sono configurati in `[tool.release.assets]`: `dist/AppDraft.exe` su Windows e `dist/AppDraft.app` su macOS. Il bundle macOS viene compresso con `ditto` in `dist/AppDraft.app.zip` prima del commit. Il comando pubblica la build del sistema corrente; non genera anche quella degli altri sistemi.
+
+Per verificare il piano e l'accesso a GitHub senza build né pubblicazione:
+
+```powershell
+pnpm version:minor --release --dry-run
+```
+
+L'anteprima richiede comunque una working tree pulita e fa controlli di lettura sul remoto e su GitHub. Con Python diretto l'equivalente è `python scripts/release.py minor --release`, usando l'interprete della `.venv`.
+
+Il comportamento usa [GitHub CLI per creare le release](https://cli.github.com/manual/gh_release_create), [caricare gli allegati](https://cli.github.com/manual/gh_release_upload) e [pubblicare la bozza](https://cli.github.com/manual/gh_release_edit).
 
 ## Riutilizzo in altri progetti
 
@@ -80,6 +113,8 @@ Opzioni aggiuntive:
 | --- | --- |
 | `--branch main` | Richiede il branch indicato, senza cambiarlo |
 | `--remote origin` | Sceglie il remoto per `--push` |
+| `--release` | Implica build/push e pubblica una GitHub Release con gli allegati |
+| `--asset dist/file.zip` | Sceglie un allegato al posto di quelli configurati; ripetibile, ammette `{version}` |
 | `--tag-prefix v` | Prefisso del tag; predefinito `v` |
 | `--check JSON` | Aggiunge un comando di verifica; ripetibile |
 | `--build-command JSON` | Esegue un comando di build al posto di quello configurato |
@@ -92,6 +127,8 @@ python scripts/release.py patch --check '["{python}", "-m", "pytest", "-q"]'
 
 Per comandi npm su Windows usa l'eseguibile `npm.cmd`, su macOS/Linux `npm`; il comando deve essere disponibile nel PATH. Se serve una shell per un tuo script, dichiarala esplicitamente nell'array. Non copiare la configurazione di test/build di AppDraft in progetti che usano altri strumenti.
 
+Per altri progetti, `--release` richiede un comando di build in `[tool.release].build` oppure `--build-command`, e almeno un allegato via `--asset` o configurazione. `assets` può essere un array comune a tutti i sistemi sotto `[tool.release]`, oppure una tabella `[tool.release.assets]` con array per `win32`, `darwin` e `linux`. I percorsi degli allegati sono relativi a `--root` e devono rimanervi dentro. Gli allegati devono essere file non vuoti, con nomi distinti; l'unica directory supportata è una `.app` su macOS, compressa automaticamente. Non sono supportati pattern glob o etichette `#` nei percorsi.
+
 ## Errori e recupero
 
 Lo script rifiuta una working tree sporca, HEAD scollegata da un branch, file ambigui, versioni non supportate, lock npm incoerenti e tag già esistenti. Con `--push` controlla anche il tag remoto e che il branch remoto sia antenato di HEAD. Se il commit remoto non è disponibile localmente o il branch è divergente, aggiorna e riconcilia manualmente il repository prima di riprovare. Non vengono eseguiti fetch, merge o force push automatici.
@@ -99,3 +136,11 @@ Lo script rifiuta una working tree sporca, HEAD scollegata da un branch, file am
 Prima del commit, un errore ripristina i file di versione originali e li rimuove dallo staging. Eventuali altri file creati o modificati dai controlli e gli artefatti di build restano disponibili per la verifica. I comandi personalizzati e gli hook Git devono essere fidati e non spostare HEAD.
 
 Dopo un commit, un errore conserva il commit e l'eventuale tag per permetterne l'ispezione. Se il push fallisce, controlla il tag e riprova il comando di push riportato nell'errore: non eseguire nuovamente il bump. Lo script non cancella commit o tag e non sovrascrive la cronologia remota.
+
+Se il push è riuscito ma la creazione/upload/pubblicazione GitHub fallisce, non rilanciare `version:patch/minor/major`. Controlla lo stesso tag con `gh release view TAG --repo HOST/OWNER/REPO` e continua la pubblicazione:
+
+- Se non esiste una release, creala con `gh release create TAG --repo HOST/OWNER/REPO --verify-tag --generate-notes --draft`.
+- Se esiste una bozza, carica soltanto gli allegati mancanti con `gh release upload TAG dist/AppDraft.exe --repo HOST/OWNER/REPO` (su macOS usa lo ZIP).
+- Dopo aver verificato note e allegati, pubblica la bozza con `gh release edit TAG --repo HOST/OWNER/REPO --draft=false --latest`.
+
+Sostituisci `TAG` e `HOST/OWNER/REPO` con quelli riportati nell'errore. Per una prerelease usa `--prerelease` durante la creazione e `--latest=false` durante la pubblicazione. Se la release risulta già pubblicata, verifica il suo contenuto prima di qualsiasi intervento. Lo script non sovrascrive allegati esistenti e non modifica release precedenti.

@@ -4,10 +4,12 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
 import subprocess
 import sys
 import tomllib
 from pathlib import Path
+from urllib.parse import urlsplit
 
 
 LEVELS = ("major", "minor", "patch", "premajor", "preminor", "prepatch", "prerelease")
@@ -118,6 +120,55 @@ def command(value: object) -> list[str]:
     return value
 
 
+def github_repository(remote_url: str) -> tuple[str, str]:
+    """Select the exact push repository instead of relying on gh's default remote."""
+    if "://" in remote_url:
+        url = urlsplit(remote_url)
+        if url.scheme not in ("https", "http", "ssh"):
+            raise ValueError("GitHub releases require an HTTPS or SSH remote.")
+        host, path = url.hostname, url.path.lstrip("/")
+    else:
+        match = re.fullmatch(r"(?:[^@/:]+@)?([^/:]+):(.+)", remote_url)
+        if not match:
+            raise ValueError("Cannot identify the GitHub repository from the push remote.")
+        host, path = match.group(1, 2)
+    path = path.rstrip("/").removesuffix(".git")
+    if not host or not re.fullmatch(r"[A-Za-z0-9.-]+", host) or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", path):
+        raise ValueError("Expected a remote URL containing HOST/OWNER/REPO.")
+    return host, path
+
+
+def release_assets(root: Path, values: object, version: str) -> list[Path]:
+    if not isinstance(values, list) or not values or not all(isinstance(x, str) and x for x in values):
+        raise ValueError("GitHub releases require --asset or [tool.release.assets] for this platform.")
+    assets = [(root / value.replace("{version}", version)).resolve() for value in values]
+    for asset in assets:
+        asset.relative_to(root)
+        # gh interprets '#' as a display label and glob characters as patterns.
+        if any(char in str(asset) for char in "#*?[]"):
+            raise ValueError(f"Asset paths cannot contain gh pattern/label characters: {asset}")
+        if asset.suffix == ".app" and (sys.platform != "darwin" or not shutil.which("ditto")):
+            raise ValueError("Packaging .app assets requires macOS and ditto.")
+    names = [asset.name + ".zip" if asset.suffix == ".app" else asset.name for asset in assets]
+    if len(set(names)) != len(names):
+        raise ValueError("Release assets must have distinct filenames.")
+    return assets
+
+
+def package_assets(assets: list[Path], root: Path) -> list[Path]:
+    packaged = []
+    for asset in assets:
+        if asset.is_dir() and asset.suffix == ".app" and sys.platform == "darwin":
+            archive = asset.with_name(asset.name + ".zip")
+            run(["ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", str(asset), str(archive)], root)
+            asset = archive
+        if not asset.is_file() or asset.stat().st_size == 0:
+            raise ValueError(f"Release asset missing or empty after build: {asset}")
+        asset.resolve(strict=True).relative_to(root)
+        packaged.append(asset)
+    return packaged
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("level", choices=LEVELS)
@@ -128,12 +179,23 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--tag-prefix", default="v")
     parser.add_argument("--remote", default="origin")
     parser.add_argument("--push", action="store_true", help="Publish the branch and this tag with an atomic push")
+    parser.add_argument("--release", action="store_true", help="Build, push, create a GitHub Release and upload assets (requires gh)")
+    parser.add_argument("--asset", action="append", default=[], help="Release asset relative to root; repeatable; supports {version}")
     parser.add_argument("--dry-run", action="store_true", help="Validate and print the plan without changes or commands")
     parser.add_argument("--check", action="append", default=[], help="Additional check as a JSON array; repeatable")
     parser.add_argument("--build", action="store_true", help="Run [tool.release].build")
     parser.add_argument("--build-command", help="Build command as a JSON array")
     args = parser.parse_args(argv)
+    if args.asset and not args.release:
+        parser.error("--asset requires --release")
+    if args.release:
+        args.push = True
+        args.build = True
     committed = False
+    pushed = False
+    release_started = False
+    github_repo = None
+    assets: list[Path] = []
     originals: dict[Path, bytes] = {}
     initial_head = None
     try:
@@ -186,18 +248,40 @@ def main(argv: list[str] | None = None) -> int:
         commands = [[part.replace("{python}", sys.executable).replace("{version}", new) for part in item]
                     for item in commands]
         if args.push:
-            run(["git", "remote", "get-url", args.remote], git_root)
-            if run(["git", "ls-remote", "--tags", args.remote, "refs/tags/" + tag], git_root):
+            remote_urls = run(["git", "remote", "get-url", "--push", "--all", args.remote], git_root).splitlines()
+            if len(remote_urls) != 1:
+                raise ValueError("Release publication requires exactly one push URL for the selected remote.")
+            remote_url = remote_urls[0]
+            if run(["git", "ls-remote", "--tags", remote_url, "refs/tags/" + tag], git_root):
                 raise ValueError(f"Tag {tag!r} already exists on {args.remote!r}.")
-            remote_branch = run(["git", "ls-remote", "--heads", args.remote, "refs/heads/" + branch], git_root)
+            remote_branch = run(["git", "ls-remote", "--heads", remote_url, "refs/heads/" + branch], git_root)
             if remote_branch:
                 # Require the remote tip locally; never fetch or merge behind the user's back.
                 run(["git", "merge-base", "--is-ancestor", remote_branch.split()[0], initial_head], git_root)
+        if args.release:
+            if not shutil.which("gh"):
+                raise ValueError("GitHub CLI (gh) is required. Install it and run gh auth login.")
+            host, repository = github_repository(remote_url)
+            github_repo = f"{host}/{repository}"
+            run(["gh", "auth", "status", "--active", "--hostname", host], root)
+            info = json.loads(run(["gh", "repo", "view", github_repo, "--json", "viewerPermission,isArchived"], root))
+            if info.get("isArchived") or info.get("viewerPermission") not in ("WRITE", "MAINTAIN", "ADMIN"):
+                raise ValueError("The GitHub repository must be writable and not archived.")
+            existing_tags = run(["gh", "api", "--hostname", host, f"repos/{repository}/releases",
+                                 "--paginate", "--jq", ".[].tag_name"], root).splitlines()
+            if tag in existing_tags:
+                raise ValueError(f"GitHub Release {tag!r} already exists (possibly a draft).")
+            configured_assets = config.get("assets", {})
+            if isinstance(configured_assets, dict):
+                configured_assets = configured_assets.get(sys.platform, [])
+            assets = release_assets(root, args.asset or configured_assets, new)
         print(f"Release: {version} -> {new}; branch: {branch}; tag: {tag}", flush=True)
         print("Version files: " + ", ".join(names), flush=True)
         for item in commands:
             print("Check/build: " + repr(item), flush=True)
         print("Publish: " + (args.remote + " (atomic)" if args.push else "local commit and tag only"), flush=True)
+        if args.release:
+            print(f"GitHub Release: {github_repo}; assets: " + ", ".join(str(asset) for asset in assets), flush=True)
         if args.dry_run:
             return 0
         originals = {file: file.read_bytes() for file in updates}
@@ -205,6 +289,8 @@ def main(argv: list[str] | None = None) -> int:
             file.write_bytes(content)
         for item in commands:
             run(item, root, capture=False)
+        if args.release:
+            assets = package_assets(assets, root)
         # Checks may create ignored build artifacts, but must not change release sources.
         changed = run(["git", "diff", "--name-only", "HEAD"], git_root).splitlines()
         untracked = run(["git", "ls-files", "--others", "--exclude-standard"], git_root)
@@ -223,6 +309,19 @@ def main(argv: list[str] | None = None) -> int:
         if args.push:
             run(["git", "push", "--atomic", args.remote,
                  f"HEAD:refs/heads/{branch}", f"refs/tags/{tag}:refs/tags/{tag}"], git_root, capture=False)
+            pushed = True
+        if args.release:
+            # Publish only after every asset has uploaded successfully. A failed
+            # upload leaves a recoverable draft, including for immutable releases.
+            release_started = True
+            create = ["gh", "release", "create", tag, "--repo", github_repo,
+                      "--verify-tag", "--generate-notes", "--title", tag, "--draft"]
+            if args.level.startswith("pre"):
+                create.append("--prerelease")
+            run(create, root, capture=False)
+            run(["gh", "release", "upload", tag, *map(str, assets), "--repo", github_repo], root, capture=False)
+            run(["gh", "release", "edit", tag, "--repo", github_repo, "--draft=false",
+                 "--latest=false" if args.level.startswith("pre") else "--latest"], root, capture=False)
         print(f"Release {tag} complete" + (" and published." if args.push else " locally."), flush=True)
         return 0
     except (OSError, ValueError, KeyError, RuntimeError) as exc:
@@ -236,9 +335,13 @@ def main(argv: list[str] | None = None) -> int:
                     print("Original version files restored; other changes and build artifacts retained.", file=sys.stderr)
                 else:
                     print("Commit retained. Inspect git status and tags; do not rerun a version bump to retry publication.", file=sys.stderr)
-                    if args.push and committed:
+                    if args.push and committed and not pushed:
                         print(f"After verifying the tag, retry: git push --atomic {args.remote} "
                               f"HEAD:refs/heads/{branch} refs/tags/{tag}:refs/tags/{tag}", file=sys.stderr)
+                    if release_started:
+                        print(f"GitHub publication may be incomplete. Inspect: gh release view {tag} --repo {github_repo}\n"
+                              "If a draft exists, upload only the missing assets and publish it. "
+                              "If no release exists, create it for this same tag. See docs/releases.md.", file=sys.stderr)
             except (OSError, RuntimeError) as recovery_error:
                 print(f"Recovery failed; inspect git status: {recovery_error}", file=sys.stderr)
         return 1
