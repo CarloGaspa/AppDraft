@@ -1,0 +1,9 @@
+{
+  "name": "appdraft-dev-tools",
+  "private": true,
+  "scripts": {
+    "version:patch": "node scripts/release.mjs patch --build",
+    "version:minor": "node scripts/release.mjs minor --build",
+    "version:major": "node scripts/release.mjs major --build"
+  }
+}

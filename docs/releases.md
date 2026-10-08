@@ -8,6 +8,33 @@
 
 Esegui dalla radice del progetto, dopo aver committato tutte le modifiche. La versione proviene da `[project].version` in `pyproject.toml`; anche il bundle macOS legge questa fonte durante la build.
 
+### Comandi brevi con pnpm o npm
+
+Se hai Node.js e pnpm, usa uno dei seguenti comandi dalla radice:
+
+```powershell
+pnpm version:patch
+pnpm version:minor
+pnpm version:major
+```
+
+Ogni comando incrementa la versione, esegue i test, produce la build per il sistema corrente e crea commit e tag locali. Esegui soltanto quello del livello desiderato. Non occorre `pnpm install`: questi alias non hanno dipendenze Node e usano direttamente l'interprete della `.venv`, senza richiedere di attivarla.
+
+Puoi aggiungere le opzioni dello script:
+
+```powershell
+pnpm version:minor --dry-run
+pnpm version:minor --push
+```
+
+Il primo mostra soltanto il piano; il secondo esegue il rilascio e invia anche commit e tag. Sono alternative, non passaggi da ripetere dopo un rilascio locale: per inviare una release già creata usa Git, senza incrementare nuovamente la versione.
+
+Con npm gli equivalenti sono `npm run version:minor` e `npm run version:minor -- --push`. Per vedere tutte le opzioni: `pnpm version:minor --help`. Il launcher `scripts/release.mjs` funziona anche su macOS/Linux, selezionando `.venv/bin/python`.
+
+`package.json` contiene solo questi comandi di sviluppo, senza una versione dell'app. Python e `pyproject.toml` restano la fonte della versione; Node.js/pnpm sono opzionali e non entrano nella build distribuita.
+
+### Comandi Python diretti
+
 In PowerShell:
 
 ```powershell
@@ -34,7 +61,7 @@ Copia `scripts/release.py` nel progetto e lancialo dalla sua radice, oppure indi
 Riconosce un solo file tra:
 
 - `pyproject.toml`: versione statica in `[project].version`, con prerelease Python `a`, `b` o `rc`.
-- `package.json`: versione SemVer; aggiorna anche `package-lock.json` e `npm-shrinkwrap.json`, se presenti, senza modificare le versioni delle dipendenze. Non richiede npm e non esegue gli hook npm `preversion`, `version` o `postversion`. I JSON possono essere riformattati, mantenendo indentazione e terminatori di riga.
+- `package.json`: versione SemVer; aggiorna anche `package-lock.json` e `npm-shrinkwrap.json`, se presenti, senza modificare le versioni delle dipendenze. Un `package.json` privo di `version`, usato solo per alias di sviluppo, viene ignorato dal riconoscimento automatico. Non richiede npm e non esegue gli hook npm `preversion`, `version` o `postversion`. I JSON possono essere riformattati, mantenendo indentazione e terminatori di riga.
 - `VERSION`: file di testo contenente soltanto una versione SemVer.
 
 Se più file sono presenti, specifica `--version-file`. Per un client annidato:

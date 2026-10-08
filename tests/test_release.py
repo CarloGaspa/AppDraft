@@ -78,6 +78,21 @@ def test_failed_check_restores_version_and_index(repo):
     assert not git(repo, "tag", "--list")
 
 
+def test_task_package_without_version_keeps_python_autodetection(repo):
+    (repo / "package.json").write_text('{"private": true, "scripts": {}}')
+    git(repo, "add", "package.json")
+    git(repo, "commit", "-m", "task shortcuts")
+    assert release.main(["patch", "--root", str(repo), "--dry-run"]) == 0
+
+
+def test_two_version_sources_require_explicit_selection(repo):
+    (repo / "package.json").write_text('{"version": "1.2.3"}')
+    git(repo, "add", "package.json")
+    git(repo, "commit", "-m", "npm project")
+    assert release.main(["patch", "--root", str(repo), "--dry-run"]) == 1
+    assert release.main(["patch", "--root", str(repo), "--version-file", "pyproject.toml", "--dry-run"]) == 0
+
+
 def test_dirty_tree_and_existing_tag_stop_before_changes(repo):
     path = repo / "pyproject.toml"
     original = path.read_bytes()

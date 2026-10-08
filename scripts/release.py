@@ -152,6 +152,10 @@ def main(argv: list[str] | None = None) -> int:
             path = (root / args.version_file).resolve(strict=True)
         else:
             candidates = [root / name for name in ("pyproject.toml", "package.json", "VERSION") if (root / name).is_file()]
+            # A private package.json may provide task shortcuts for a Python project,
+            # without being another source of the application version.
+            candidates = [file for file in candidates if file.name != "package.json"
+                          or "version" in json.loads(file.read_text(encoding="utf-8"))]
             if len(candidates) != 1:
                 raise ValueError("Expected exactly one version file; choose it with --version-file.")
             path = candidates[0]

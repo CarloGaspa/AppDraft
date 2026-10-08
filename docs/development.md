@@ -10,7 +10,7 @@ Queste istruzioni servono a chi lavora sulla repo. Per aprire l'app pronta con d
 - PySide6 6.7–6.x, PyYAML 6.x e Pydantic 2.x, installati tramite `pyproject.toml`.
 - Extra `dev` per pytest e PyInstaller.
 
-Windows è il target iniziale. Il codice usa API cross-platform; avvio e packaging macOS richiedono verifica su un Mac. Non sono necessari server, Node.js, Docker o servizi esterni. L'installazione delle dipendenze richiede normalmente accesso al loro indice; l'app in esecuzione non usa la rete.
+Windows è il target iniziale. Il codice usa API cross-platform; avvio e packaging macOS richiedono verifica su un Mac. Non sono necessari server, Node.js, Docker o servizi esterni. Node.js e pnpm/npm sono opzionali per gli [alias di rilascio](releases.md), come `pnpm version:minor`. L'installazione delle dipendenze richiede normalmente accesso al loro indice; l'app in esecuzione non usa la rete.
 
 Esegui i comandi seguenti nella radice della repo, quella che contiene `app.py` e `pyproject.toml`. I nomi `.venv` e `.local/test-data` sono relativi a questa directory.
 

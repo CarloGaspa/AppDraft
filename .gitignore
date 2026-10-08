@@ -8,3 +8,4 @@ dist/
 drafts/*.json
 exports/*.md
 .local/
+node_modules/
