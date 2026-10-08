@@ -6,15 +6,15 @@ AppDraft compila questionari definiti in Markdown e produce una specifica condiv
 
 ## Aprire l'app su Windows
 
-1. Procurati `AppDraft.exe`, oppure usa `dist/AppDraft.exe` se hai creato la build dalla repo.
+1. Scarica `AppDraft-Windows-x64.exe` dalla GitHub Release, oppure usa `dist/AppDraft.exe` se hai creato la build dalla repo.
 2. Se ricevuto in uno ZIP, estrailo prima di aprirlo.
-3. Fai doppio clic su `AppDraft.exe`.
+3. Fai doppio clic sul file `.exe` scaricato.
 
 Non servono installer, Python, VS Code o terminale. Puoi spostare l'eseguibile in una cartella a tua scelta: i template iniziali sono già inclusi. Al primo avvio non devi preparare file o cartelle di supporto.
 
 ## Aprire l'app su macOS
 
-1. Procurati la build macOS `AppDraft.app`, eventualmente dentro `AppDraft-macOS.zip`.
+1. Scarica dalla GitHub Release `AppDraft-macOS-arm64.zip` per Mac Apple Silicon (chip M1 o successivo), oppure `AppDraft-macOS-x64.zip` per Mac Intel. Puoi verificare il chip in **menu Apple → Informazioni su questo Mac**. Le build locali possono essere distribuite come `AppDraft-macOS.zip`.
 2. Estrai lo ZIP con Finder, preservando l'intera `.app`.
 3. Fai doppio clic su `AppDraft.app`. Puoi anche spostarla in Applicazioni, ma non è necessario.
 

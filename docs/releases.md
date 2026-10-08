@@ -4,79 +4,32 @@
 
 `scripts/release.py` è uno strumento di sviluppo riutilizzabile, separato dall'app distribuita. Richiede Python 3.11+ e Git, senza librerie Python aggiuntive. AppDraft richiede comunque Python 3.12+ e l'ambiente di sviluppo per test e build.
 
-## AppDraft
+## AppDraft: una release per Windows e macOS
 
 Esegui dalla radice del progetto, dopo aver committato tutte le modifiche. La versione proviene da `[project].version` in `pyproject.toml`; anche il bundle macOS legge questa fonte durante la build.
 
-### Comandi brevi con pnpm o npm
+### Configurazione iniziale su GitHub
 
-Se hai Node.js e pnpm, usa uno dei seguenti comandi dalla radice. I comandi pnpm/npm e GitHub CLI (`gh`) in questa guida sono identici su macOS (Terminale: zsh/bash) e Windows (PowerShell); sono riportati in blocchi di testo comuni:
+1. Porta `.github/workflows/release.yml` e gli script aggiornati nel branch predefinito del repository GitHub. Il workflow deve essere presente su quel branch per poterlo avviare con `workflow_dispatch`.
+2. Verifica che GitHub Actions sia abilitato per il repository e che le policy consentano al job di pubblicazione di usare `contents: write`.
+3. Completa il [setup Python](development.md) con l'extra `dev`. Per i comandi brevi servono anche Node.js e pnpm oppure npm; non occorre `pnpm install`.
+4. Installa GitHub CLI (`gh`) e autenticala con `gh auth login`. L'account deve poter fare push, avviare workflow e pubblicare release nel repository. Il workflow usa il `GITHUB_TOKEN` automatico di GitHub, senza un token personale nei file del progetto.
 
-```text
-pnpm version:patch
-pnpm version:minor
-pnpm version:major
-```
-
-Ogni comando incrementa la versione, esegue i test, produce la build per il sistema corrente e crea commit e tag locali. Esegui soltanto quello del livello desiderato. Non occorre `pnpm install`: questi alias non hanno dipendenze Node e usano direttamente l'interprete della `.venv`, senza richiedere di attivarla.
-
-Puoi aggiungere le opzioni dello script:
-
-```text
-pnpm version:minor --dry-run
-pnpm version:minor --push
-pnpm version:minor --release
-```
-
-Il primo mostra soltanto il piano; il secondo esegue il rilascio e invia anche commit e tag; il terzo pubblica anche una GitHub Release con la build allegata. Sono alternative, non passaggi da ripetere dopo un rilascio locale: per inviare una release già creata usa Git e GitHub CLI, senza incrementare nuovamente la versione.
-
-Con npm gli equivalenti sono `npm run version:minor` e `npm run version:minor -- --push`. Per vedere tutte le opzioni: `pnpm version:minor --help`. Il launcher `scripts/release.mjs` funziona anche su macOS/Linux, selezionando `.venv/bin/python`.
-
-`package.json` contiene solo questi comandi di sviluppo, senza una versione dell'app. Python e `pyproject.toml` restano la fonte della versione; Node.js/pnpm sono opzionali e non entrano nella build distribuita.
-
-### Comandi Python diretti
-
-Windows (PowerShell):
-
-```powershell
-# Anteprima: controlli preliminari e piano, nessuna modifica né test/build
-.\.venv\Scripts\python.exe scripts/release.py patch --dry-run
-
-# Incremento, test, build per il sistema corrente, commit e tag locali
-.\.venv\Scripts\python.exe scripts/release.py patch --build
-
-# In alternativa: stessi passaggi con pubblicazione su origin
-.\.venv\Scripts\python.exe scripts/release.py patch --build --push
-```
-
-macOS (Terminale):
+Su macOS con Homebrew puoi installare GitHub CLI così:
 
 ```bash
-# Anteprima: controlli preliminari e piano, nessuna modifica né test/build
-./.venv/bin/python scripts/release.py patch --dry-run
-
-# Incremento, test, build per il sistema corrente, commit e tag locali
-./.venv/bin/python scripts/release.py patch --build
-
-# In alternativa: stessi passaggi con pubblicazione su origin
-./.venv/bin/python scripts/release.py patch --build --push
+brew install gh
 ```
 
-Per ciascun sistema, i due comandi di rilascio sono alternative: eseguirli entrambi incrementa due volte la versione. I percorsi espliciti della `.venv` funzionano senza attivarla.
-
-`--build` usa il comando configurato in `[tool.release].build`; i test in `[tool.release].checks` vengono eseguiti anche senza `--build`. `{python}` indica l'interprete con cui esegui lo script, quindi usa quello della `.venv`. I comandi vengono eseguiti dopo l'aggiornamento dei file di versione, prima del commit. Test e build devono lasciare invariati i sorgenti; gli artefatti devono essere esclusi da Git.
-
-`--push` pubblica il branch corrente e soltanto il tag appena creato, con un unico push atomico. Il server deve supportarlo: non c'è un ripiego su due push separati. Per creare anche una GitHub Release e allegare la build usa `--release`. Non vengono prodotti installer. Per verificare gli artefatti sul sistema target vedi [packaging](packaging.md).
-
-### Pubblicare su GitHub con un solo comando
-
-Installa GitHub CLI (`gh`) e autenticala una volta con:
+L'autenticazione è uguale su macOS (Terminale: zsh/bash) e Windows (PowerShell):
 
 ```text
 gh auth login
 ```
 
-Dopo aver committato le modifiche, scegli uno di questi comandi:
+### Pubblicare con pnpm o npm
+
+I comandi sono identici su macOS e Windows. Scegli un solo livello:
 
 ```text
 pnpm version:patch --release
@@ -84,21 +37,102 @@ pnpm version:minor --release
 pnpm version:major --release
 ```
 
-`--release` implica build e push. Prima di modificare la versione controlla autenticazione, accesso in scrittura al repository e assenza della nuova release, comprese le bozze. Il repository viene ricavato dall'URL di push del remoto scelto, anche usando `--remote`; non dipende dal repository predefinito di `gh`. Il remoto deve avere un solo URL di push HTTPS o SSH. Le credenziali devono consentire anche le operazioni sulle release.
+Lo script incrementa la versione, esegue i test locali, crea commit e tag, fa push atomico del branch e del tag, poi avvia `release.yml` sul tag appena creato. Con `--release` la build locale viene saltata: tutte le build di distribuzione vengono prodotte su GitHub Actions.
 
-Il flusso è: aggiornamento versione → test → build → verifica artefatti → commit → tag → push atomico → GitHub Release in bozza con note generate → upload degli artefatti → pubblicazione. Le release stabili vengono marcate come Latest; le prerelease vengono marcate come tali e non diventano Latest. Le release precedenti restano disponibili. La bozza è un passaggio automatico: se tutto riesce, il comando la pubblica senza ulteriori operazioni manuali.
+Il comando termina quando GitHub accetta l'avvio del workflow; **la release non è ancora pubblicata**. GitHub esegue i test e PyInstaller su tre macchine e prepara questi download:
 
-Per AppDraft gli allegati sono configurati in `[tool.release.assets]`: `dist/AppDraft.exe` su Windows e `dist/AppDraft.app` su macOS. Il bundle macOS viene compresso con `ditto` in `dist/AppDraft.app.zip` prima del commit. Il comando pubblica la build del sistema corrente; non genera anche quella degli altri sistemi.
+| Sistema | Allegato |
+| --- | --- |
+| Windows x64 | `AppDraft-Windows-x64.exe` |
+| macOS Apple Silicon (arm64) | `AppDraft-macOS-arm64.zip` |
+| macOS Intel (x64) | `AppDraft-macOS-x64.zip` |
 
-Per verificare il piano e l'accesso a GitHub senza build né pubblicazione:
+Ogni ZIP macOS contiene l'intera `AppDraft.app`, preservata con `ditto`. Il workflow usa Python 3.12 e runner `windows-2022`, `macos-15` e `macos-15-intel`; le versioni minime dei sistemi supportati devono essere verificate sui computer target. Le build non sono firmate né notarizzate: vedi [packaging](packaging.md).
+
+La pubblicazione parte solo se **tutti e tre i job di build riescono**. Il job finale controlla che gli allegati esistano e non siano vuoti, crea una release in bozza, carica tutti i download e pubblica la release. Le prerelease vengono marcate come tali e non diventano Latest. Le release già pubblicate non vengono modificate.
+
+Per seguire l'esecuzione, apri la scheda **Actions** del repository oppure usa:
 
 ```text
-pnpm version:minor --release --dry-run
+gh run list --workflow release.yml
+gh run watch RUN_ID
 ```
 
-L'anteprima richiede comunque una working tree pulita e fa controlli di lettura sul remoto e su GitHub. Con Python diretto, la stessa anteprima è `./.venv/bin/python scripts/release.py minor --release --dry-run` su macOS e `.\.venv\Scripts\python.exe scripts/release.py minor --release --dry-run` su Windows (PowerShell).
+Sostituisci `RUN_ID` con l'identificativo mostrato dal primo comando. Questi comandi assumono il repository GitHub della cartella corrente; se usi un altro remoto aggiungi `--repo HOST/OWNER/REPO` indicato dallo script.
 
-Il comportamento usa [GitHub CLI per creare le release](https://cli.github.com/manual/gh_release_create), [caricare gli allegati](https://cli.github.com/manual/gh_release_upload) e [pubblicare la bozza](https://cli.github.com/manual/gh_release_edit).
+Con npm l'equivalente è `npm run version:patch -- --release`. Per vedere il piano e verificare accesso e disponibilità del workflow senza modifiche, build o pubblicazione:
+
+```text
+pnpm version:patch --release --dry-run
+```
+
+L'anteprima richiede una working tree pulita e fa controlli di lettura su GitHub. Se il workflow non è ancora sul branch predefinito o è disabilitato, lo script si ferma prima di modificare la versione.
+
+### Build e rilascio locali
+
+Senza `--release`, i comandi brevi mantengono la build locale:
+
+```text
+pnpm version:patch
+pnpm version:minor
+pnpm version:major
+```
+
+Ogni comando esegue test e build del sistema corrente e crea commit e tag locali. `--push` invia anche branch e tag, ma **non avvia il workflow**. Questi comandi sono alternative a `--release`: eseguirli di nuovo incrementa nuovamente la versione.
+
+### Comandi Python diretti
+
+Usano l'interprete della `.venv`, senza richiedere di attivarla o avere Node.js/pnpm.
+
+macOS (Terminale):
+
+```bash
+# Anteprima della release multipiattaforma
+./.venv/bin/python scripts/release.py patch --release --dry-run
+
+# In alternativa: test locali, versione, commit/tag/push e avvio GitHub Actions
+./.venv/bin/python scripts/release.py patch --release
+
+# In alternativa: test e build locali, commit e tag senza pubblicazione
+./.venv/bin/python scripts/release.py patch --build
+```
+
+Windows (PowerShell):
+
+```powershell
+# Anteprima della release multipiattaforma
+.\.venv\Scripts\python.exe scripts/release.py patch --release --dry-run
+
+# In alternativa: test locali, versione, commit/tag/push e avvio GitHub Actions
+.\.venv\Scripts\python.exe scripts/release.py patch --release
+
+# In alternativa: test e build locali, commit e tag senza pubblicazione
+.\.venv\Scripts\python.exe scripts/release.py patch --build
+```
+
+`[tool.release].github-workflow = "release.yml"` seleziona la pubblicazione tramite Actions per AppDraft. I test in `[tool.release].checks` vengono eseguiti localmente anche in questa modalità. Le opzioni `--asset` e `--build-command` non sono ammesse insieme a una release tramite workflow: modifica il workflow per cambiare le build pubblicate. Il workflow verifica che il tag sia `v` seguito dalla versione del progetto; per AppDraft conserva il prefisso predefinito `v`.
+
+### Recuperare un errore senza incrementare la versione
+
+Se i test locali falliscono prima del commit, lo script ripristina i file di versione. Dopo commit e tag, conserva il lavoro già creato e mostra come riprendere.
+
+Se il push riesce ma l'avvio del workflow fallisce, verifica le esecuzioni esistenti e avvia il workflow **sullo stesso tag**, usando il repository indicato dallo script:
+
+```text
+gh workflow run release.yml --repo HOST/OWNER/REPO --ref TAG
+```
+
+Se una build o un upload fallisce su GitHub, consulta i log in Actions. Puoi rieseguire **tutti i job** della stessa esecuzione, senza creare un'altra versione:
+
+```text
+gh run rerun RUN_ID --repo HOST/OWNER/REPO
+```
+
+Le build intermedie sono conservate come artifact per sette giorni; rieseguire tutti i job le ricrea anche dopo la scadenza. Se un upload era riuscito solo in parte, il job di pubblicazione riusa la bozza e sostituisce gli allegati di quella bozza prima di pubblicarla. Se la release è già pubblicata, il workflow si ferma e conserva i download esistenti.
+
+Non rieseguire `pnpm version:patch/minor/major` per recuperare una pubblicazione fallita: produrrebbe una nuova versione.
+
+Il workflow usa [runner GitHub Windows e macOS](https://docs.github.com/en/actions/reference/runners/github-hosted-runners), [avvio tramite GitHub CLI sul tag](https://cli.github.com/manual/gh_workflow_run) e [GitHub CLI per creare le release](https://cli.github.com/manual/gh_release_create).
 
 ## Riutilizzo in altri progetti
 
@@ -154,9 +188,11 @@ Lo stesso esempio su macOS (Terminale):
 
 Per comandi npm su Windows usa l'eseguibile `npm.cmd`, su macOS/Linux `npm`; il comando deve essere disponibile nel PATH. Se serve una shell per un tuo script, dichiarala esplicitamente nell'array. Non copiare la configurazione di test/build di AppDraft in progetti che usano altri strumenti.
 
-Per altri progetti, `--release` richiede un comando di build in `[tool.release].build` oppure `--build-command`, e almeno un allegato via `--asset` o configurazione. `assets` può essere un array comune a tutti i sistemi sotto `[tool.release]`, oppure una tabella `[tool.release.assets]` con array per `win32`, `darwin` e `linux`. I percorsi degli allegati sono relativi a `--root` e devono rimanervi dentro. Gli allegati devono essere file non vuoti, con nomi distinti; l'unica directory supportata è una `.app` su macOS, compressa automaticamente. Non sono supportati pattern glob o etichette `#` nei percorsi.
+Per altri progetti senza `github-workflow`, `--release` mantiene la pubblicazione locale e richiede un comando di build in `[tool.release].build` oppure `--build-command`, e almeno un allegato via `--asset` o configurazione. `assets` può essere un array comune a tutti i sistemi sotto `[tool.release]`, oppure una tabella `[tool.release.assets]` con array per `win32`, `darwin` e `linux`. I percorsi degli allegati sono relativi a `--root` e devono rimanervi dentro. Gli allegati devono essere file non vuoti, con nomi distinti; l'unica directory supportata è una `.app` su macOS, compressa automaticamente. Non sono supportati pattern glob o etichette `#` nei percorsi.
 
-## Errori e recupero
+## Errori e recupero dello script generico
+
+Le istruzioni di upload manuale qui sotto riguardano la pubblicazione locale di altri progetti senza `github-workflow`. Per AppDraft usa il recupero tramite Actions descritto sopra.
 
 Lo script rifiuta una working tree sporca, HEAD scollegata da un branch, file ambigui, versioni non supportate, lock npm incoerenti e tag già esistenti. Con `--push` controlla anche il tag remoto e che il branch remoto sia antenato di HEAD. Se il commit remoto non è disponibile localmente o il branch è divergente, aggiorna e riconcilia manualmente il repository prima di riprovare. Non vengono eseguiti fetch, merge o force push automatici.
 

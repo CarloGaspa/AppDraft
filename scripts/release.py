@@ -179,7 +179,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--tag-prefix", default="v")
     parser.add_argument("--remote", default="origin")
     parser.add_argument("--push", action="store_true", help="Publish the branch and this tag with an atomic push")
-    parser.add_argument("--release", action="store_true", help="Build, push, create a GitHub Release and upload assets (requires gh)")
+    parser.add_argument("--release", action="store_true", help="Push and publish via configured workflow, or build/upload locally (requires gh)")
     parser.add_argument("--asset", action="append", default=[], help="Release asset relative to root; repeatable; supports {version}")
     parser.add_argument("--dry-run", action="store_true", help="Validate and print the plan without changes or commands")
     parser.add_argument("--check", action="append", default=[], help="Additional check as a JSON array; repeatable")
@@ -195,6 +195,7 @@ def main(argv: list[str] | None = None) -> int:
     pushed = False
     release_started = False
     github_repo = None
+    workflow = None
     assets: list[Path] = []
     originals: dict[Path, bytes] = {}
     initial_head = None
@@ -223,6 +224,16 @@ def main(argv: list[str] | None = None) -> int:
             path = candidates[0]
         path.relative_to(root)
         version, new, updates, config = prepare(path, args.level, args.preid)
+        workflow = config.get("github-workflow") if args.release else None
+        if workflow:
+            if not isinstance(workflow, str) or not re.fullmatch(r"[A-Za-z0-9_.-]+\.ya?ml", workflow):
+                raise ValueError("[tool.release].github-workflow must be a workflow filename.")
+            if not (root / ".github" / "workflows" / workflow).is_file():
+                raise ValueError(f"Workflow file missing: {workflow}")
+            if args.asset or args.build_command:
+                raise ValueError("Workflow releases do not accept --asset or --build-command; configure the workflow instead.")
+            # pnpm aliases pass --build: CI owns all release builds in this mode.
+            args.build = False
         tag = args.tag_prefix + new
         run(["git", "check-ref-format", "refs/tags/" + tag], git_root)
         if run(["git", "tag", "--list", tag], git_root):
@@ -271,17 +282,26 @@ def main(argv: list[str] | None = None) -> int:
                                  "--paginate", "--jq", ".[].tag_name"], root).splitlines()
             if tag in existing_tags:
                 raise ValueError(f"GitHub Release {tag!r} already exists (possibly a draft).")
-            configured_assets = config.get("assets", {})
-            if isinstance(configured_assets, dict):
-                configured_assets = configured_assets.get(sys.platform, [])
-            assets = release_assets(root, args.asset or configured_assets, new)
+            if workflow:
+                state = run(["gh", "api", "--hostname", host,
+                             f"repos/{repository}/actions/workflows/{workflow}", "--jq", ".state"], root)
+                if state != "active":
+                    raise ValueError("Release workflow must be active on GitHub's default branch. Push the workflow first.")
+            else:
+                configured_assets = config.get("assets", {})
+                if isinstance(configured_assets, dict):
+                    configured_assets = configured_assets.get(sys.platform, [])
+                assets = release_assets(root, args.asset or configured_assets, new)
         print(f"Release: {version} -> {new}; branch: {branch}; tag: {tag}", flush=True)
         print("Version files: " + ", ".join(names), flush=True)
         for item in commands:
             print("Check/build: " + repr(item), flush=True)
         print("Publish: " + (args.remote + " (atomic)" if args.push else "local commit and tag only"), flush=True)
         if args.release:
-            print(f"GitHub Release: {github_repo}; assets: " + ", ".join(str(asset) for asset in assets), flush=True)
+            if workflow:
+                print(f"GitHub Release: {github_repo}; asynchronous workflow: {workflow} at {tag}", flush=True)
+            else:
+                print(f"GitHub Release: {github_repo}; assets: " + ", ".join(str(asset) for asset in assets), flush=True)
         if args.dry_run:
             return 0
         originals = {file: file.read_bytes() for file in updates}
@@ -289,7 +309,7 @@ def main(argv: list[str] | None = None) -> int:
             file.write_bytes(content)
         for item in commands:
             run(item, root, capture=False)
-        if args.release:
+        if args.release and not workflow:
             assets = package_assets(assets, root)
         # Checks may create ignored build artifacts, but must not change release sources.
         changed = run(["git", "diff", "--name-only", "HEAD"], git_root).splitlines()
@@ -310,6 +330,12 @@ def main(argv: list[str] | None = None) -> int:
             run(["git", "push", "--atomic", args.remote,
                  f"HEAD:refs/heads/{branch}", f"refs/tags/{tag}:refs/tags/{tag}"], git_root, capture=False)
             pushed = True
+        if args.release and workflow:
+            release_started = True
+            run(["gh", "workflow", "run", workflow, "--repo", github_repo, "--ref", tag], root, capture=False)
+            print(f"Release {tag} queued on GitHub Actions; publication follows successful builds.\n"
+                  f"Track: gh run list --repo {github_repo} --workflow {workflow}", flush=True)
+            return 0
         if args.release:
             # Publish only after every asset has uploaded successfully. A failed
             # upload leaves a recoverable draft, including for immutable releases.
@@ -338,7 +364,10 @@ def main(argv: list[str] | None = None) -> int:
                     if args.push and committed and not pushed:
                         print(f"After verifying the tag, retry: git push --atomic {args.remote} "
                               f"HEAD:refs/heads/{branch} refs/tags/{tag}:refs/tags/{tag}", file=sys.stderr)
-                    if release_started:
+                    if workflow and pushed:
+                        print(f"Retry CI for the same tag: gh workflow run {workflow} --repo {github_repo} --ref {tag}\n"
+                              "Inspect existing runs first; do not increment the version again.", file=sys.stderr)
+                    elif release_started:
                         print(f"GitHub publication may be incomplete. Inspect: gh release view {tag} --repo {github_repo}\n"
                               "If a draft exists, upload only the missing assets and publish it. "
                               "If no release exists, create it for this same tag. See docs/releases.md.", file=sys.stderr)

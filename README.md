@@ -9,7 +9,7 @@ Applicazione desktop locale per compilare questionari definiti in Markdown, salv
 
 I template iniziali sono inclusi. Non servono installer, Python, VS Code, terminale o cartelle di supporto da preparare. Le bozze vengono gestite automaticamente nella cartella dati personale del sistema; gli export sono salvati dove scegli tu.
 
-La build Windows viene prodotta in `dist/AppDraft.exe`; quella macOS in `dist/AppDraft.app` va costruita e verificata su un Mac. Gli artefatti `dist/` non sono inclusi in Git. Vedi [uso dell'app su Windows e macOS](docs/usage.md) e [packaging](docs/packaging.md).
+La build Windows viene prodotta in `dist/AppDraft.exe`; quella macOS viene prodotta in `dist/AppDraft.app`. Con `pnpm version:patch --release`, GitHub Actions costruisce Windows x64, macOS Apple Silicon e macOS Intel e pubblica i tre download nella stessa release; serve prima configurare il workflow come descritto nella [guida release](docs/releases.md). Gli artefatti `dist/` non sono inclusi in Git. Vedi [uso dell'app su Windows e macOS](docs/usage.md) e [packaging](docs/packaging.md).
 
 ## Avvio rapido dai sorgenti
 

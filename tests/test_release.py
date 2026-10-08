@@ -174,7 +174,7 @@ def github_release_repo(repo, monkeypatch):
     monkeypatch.setattr(release.shutil, "which", lambda name: "gh" if name == "gh" else original_which(name))
     monkeypatch.setattr(release, "github_repository", lambda url: ("github.com", "owner/demo"))
     calls = []
-    responses = {"permission": "WRITE", "existing": "", "fail": None}
+    responses = {"permission": "WRITE", "existing": "", "fail": None, "workflow": "active"}
 
     def fake_run(args, root, *, capture=True):
         if args[0] != "gh":
@@ -185,6 +185,8 @@ def github_release_repo(repo, monkeypatch):
         if args[1:3] == ["repo", "view"]:
             return json.dumps({"viewerPermission": responses["permission"], "isArchived": False})
         if args[1] == "api":
+            if "/actions/workflows/" in args[4]:
+                return responses["workflow"]
             return responses["existing"]
         return ""
 
@@ -282,3 +284,53 @@ def test_macos_app_is_archived_with_ditto(tmp_path, monkeypatch):
     monkeypatch.setattr(release, "run", ditto)
     assert release.package_assets([app], tmp_path) == [tmp_path / "Demo.app.zip"]
     assert calls[0][:5] == ["ditto", "-c", "-k", "--sequesterRsrc", "--keepParent"]
+
+
+@pytest.fixture
+def workflow_release_repo(github_release_repo):
+    repo, remote, calls, responses, _ = github_release_repo
+    path = repo / "pyproject.toml"
+    path.write_text(path.read_text().replace('[tool.release]', '[tool.release]\ngithub-workflow = "release.yml"'))
+    workflow = repo / ".github" / "workflows" / "release.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text("name: Release\n")
+    git(repo, "add", ".")
+    git(repo, "commit", "-m", "configure workflow")
+    git(repo, "push", "origin", "main")
+    return repo, remote, calls, responses
+
+
+def test_workflow_release_pushes_tag_then_dispatches_without_local_build(workflow_release_repo, capsys):
+    repo, remote, calls, _ = workflow_release_repo
+    # --build is added by pnpm; no local build configuration is needed in CI mode.
+    assert release.main(["patch", "--root", str(repo), "--release", "--build"]) == 0
+    assert not (repo / "dist").exists()
+    assert not any(args[1] == "release" for args in calls)
+    assert calls[-1] == ["gh", "workflow", "run", "release.yml", "--repo", "github.com/owner/demo", "--ref", "v1.2.4"]
+    assert git(remote, "rev-parse", "refs/tags/v1.2.4^{commit}") == git(repo, "rev-parse", "HEAD")
+    assert "queued" in capsys.readouterr().out
+
+
+def test_workflow_dry_run_does_not_dispatch_or_push(workflow_release_repo):
+    repo, remote, calls, _ = workflow_release_repo
+    head = git(repo, "rev-parse", "HEAD")
+    assert release.main(["patch", "--root", str(repo), "--release", "--dry-run"]) == 0
+    assert git(remote, "rev-parse", "refs/heads/main") == git(repo, "rev-parse", "HEAD") == head
+    assert not any(args[1] == "workflow" for args in calls)
+
+
+def test_inactive_workflow_stops_before_version_change(workflow_release_repo):
+    repo, _, calls, responses = workflow_release_repo
+    responses["workflow"] = "disabled_manually"
+    original = (repo / "pyproject.toml").read_bytes()
+    assert release.main(["patch", "--root", str(repo), "--release"]) == 1
+    assert (repo / "pyproject.toml").read_bytes() == original
+    assert not git(repo, "tag", "--list")
+
+
+def test_failed_dispatch_retains_tag_and_reports_same_tag_retry(workflow_release_repo, capsys):
+    repo, remote, _, responses = workflow_release_repo
+    responses["fail"] = ["workflow", "run"]
+    assert release.main(["patch", "--root", str(repo), "--release"]) == 1
+    assert git(remote, "tag", "--list") == "v1.2.4"
+    assert "gh workflow run release.yml --repo github.com/owner/demo --ref v1.2.4" in capsys.readouterr().err
