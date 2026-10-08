@@ -1,6 +1,7 @@
 from pathlib import Path
+import logging
 
-from PySide6.QtCore import QSettings, QTimer
+from PySide6.QtCore import QSettings, QStandardPaths, Qt, QTimer
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (QFileDialog, QHBoxLayout, QLabel, QMainWindow, QMessageBox,
                                QProgressBar, QPushButton, QSplitter, QVBoxLayout, QWidget)
@@ -16,10 +17,10 @@ from .template_sidebar import TemplateSidebar
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, data_directory: Path):
+    def __init__(self, data_directory: Path, bundled_templates_directory: Path | None = None):
         super().__init__()
         self.data_directory = data_directory
-        self.template_service = TemplateService(data_directory / "templates")
+        self.template_service = TemplateService(data_directory / "templates", bundled_templates_directory)
         self.draft_service = DraftService(data_directory / "drafts")
         self.export_service = ExportService()
         self.settings = QSettings("AppDraft", "AppDraft")
@@ -66,6 +67,7 @@ class MainWindow(QMainWindow):
         self.autosave.timeout.connect(self.save_draft)
         self.sidebar.selected.connect(self.open_template)
         self.sidebar.reload_requested.connect(self.reload_templates)
+        self.sidebar.import_requested.connect(self.import_template)
         self.view.answer_changed.connect(self.answer_changed)
         self.save_button.clicked.connect(self.manual_save)
         self.preview_button.clicked.connect(self.preview)
@@ -75,11 +77,34 @@ class MainWindow(QMainWindow):
     def error(self, title: str, message: str) -> None:
         QMessageBox.warning(self, title, message)
 
+    def import_template(self) -> None:
+        filename, _ = QFileDialog.getOpenFileName(self, "Importa questionario", "", "Markdown (*.md)")
+        if not filename or not self.save_draft():
+            return
+        try:
+            try:
+                imported = self.template_service.import_template(Path(filename))
+            except FileExistsError as exc:
+                if QMessageBox.question(self, "Sostituisci template", f"{exc}\nSostituirlo? Le bozze restano conservate.",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+                    return
+                imported = self.template_service.import_template(Path(filename), overwrite=True)
+            self.reload_templates()
+            for row in range(self.sidebar.list.count()):
+                if self.sidebar.list.item(row).data(Qt.ItemDataRole.UserRole) == imported.id:
+                    self.sidebar.list.setCurrentRow(row)
+                    break
+            self.statusBar().showMessage("Template importato", 4000)
+        except (OSError, UnicodeError, ValueError) as exc:
+            self.error("Importazione non riuscita", str(exc))
+
     def reload_templates(self) -> None:
         if not self.save_draft():
             return
         selected = self.current.id if self.current else self.settings.value("last_template", "")
         templates, errors = self.template_service.discover()
+        logging.getLogger(__name__).info("Template caricati: %s; errori: %d", ", ".join(t.id for t in templates), len(errors))
         self.templates = {t.id: t for t in templates}
         self.current = None
         self.answers = {}
@@ -175,8 +200,10 @@ class MainWindow(QMainWindow):
         if not self.current:
             return
         try:
-            directory = Path(self.settings.value("export_directory", str(self.data_directory / "exports")))
-            directory.mkdir(parents=True, exist_ok=True)
+            documents = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DocumentsLocation)
+            directory = Path(self.settings.value("export_directory", documents or str(Path.home())))
+            if not directory.is_dir():
+                directory = Path(documents or str(Path.home()))
             suggested = directory / self.export_service.suggested_filename(self.current, self.answers)
             filename, _ = QFileDialog.getSaveFileName(self, "Esporta Markdown", str(suggested), "Markdown (*.md)")
             if not filename:

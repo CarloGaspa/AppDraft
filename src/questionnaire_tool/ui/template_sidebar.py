@@ -7,6 +7,7 @@ from questionnaire_tool.models.template import QuestionnaireTemplate
 class TemplateSidebar(QWidget):
     selected = Signal(str)
     reload_requested = Signal()
+    import_requested = Signal()
 
     def __init__(self):
         super().__init__()
@@ -16,6 +17,9 @@ class TemplateSidebar(QWidget):
         self.list = QListWidget()
         self.list.currentItemChanged.connect(self._selected)
         layout.addWidget(self.list)
+        import_button = QPushButton("Importa template…")
+        import_button.clicked.connect(self.import_requested)
+        layout.addWidget(import_button)
         refresh = QPushButton("Ricarica template")
         refresh.clicked.connect(self.reload_requested)
         layout.addWidget(refresh)

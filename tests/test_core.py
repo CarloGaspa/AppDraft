@@ -28,7 +28,7 @@ def template():
 
 
 def test_real_template():
-    result = TemplateParser().parse_file(Path(__file__).parents[1] / "templates" / "tech-stack.md")
+    result = TemplateParser().parse_file(Path(__file__).parents[1] / "src" / "questionnaire_tool" / "resources" / "templates" / "tech-stack.md")
     assert result.name == "Technology Stack Assessment"
     assert len(result.sections) == 20
     assert len(result.questions) > 30
@@ -63,7 +63,7 @@ def test_unique_question_ids(template):
 
 
 def test_discovery_isolates_invalid_and_duplicate(tmp_path):
-    source = (Path(__file__).parents[1] / "templates" / "tech-stack.md").read_text(encoding="utf-8")
+    source = (Path(__file__).parents[1] / "src" / "questionnaire_tool" / "resources" / "templates" / "tech-stack.md").read_text(encoding="utf-8")
     (tmp_path / "a.md").write_text(source, encoding="utf-8")
     (tmp_path / "b.MD").write_text(source, encoding="utf-8")
     (tmp_path / "broken.md").write_text("broken", encoding="utf-8")

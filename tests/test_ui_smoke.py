@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QApplication, QCheckBox, QDialog, QFileDialog, QMe
 
 from questionnaire_tool.ui.main_window import MainWindow
 from questionnaire_tool.renderer.widgets.scroll_safe import FormDoubleSpinBox, FormSlider
+from questionnaire_tool.application import bundled_templates_directory, default_data_directory
 
 
 def test_edit_autosave_reopen_preview_export_and_discovery(tmp_path, monkeypatch):
@@ -20,7 +21,7 @@ def test_edit_autosave_reopen_preview_export_and_discovery(tmp_path, monkeypatch
     QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path / "settings"))
     templates = tmp_path / "templates"
     templates.mkdir()
-    source = (Path(__file__).parents[1] / "templates" / "tech-stack.md").read_text(encoding="utf-8")
+    source = (Path(__file__).parents[1] / "src" / "questionnaire_tool" / "resources" / "templates" / "tech-stack.md").read_text(encoding="utf-8")
     (templates / "tech-stack.md").write_text(source, encoding="utf-8")
     window = MainWindow(tmp_path)
     errors = []
@@ -86,7 +87,7 @@ def test_corrupt_draft_protection_and_export_failure(tmp_path, monkeypatch):
     QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path / "settings"))
     templates = tmp_path / "templates"
     templates.mkdir()
-    source = Path(__file__).parents[1] / "templates" / "tech-stack.md"
+    source = Path(__file__).parents[1] / "src" / "questionnaire_tool" / "resources" / "templates" / "tech-stack.md"
     (templates / source.name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
     drafts = tmp_path / "drafts"
     drafts.mkdir()
@@ -126,7 +127,7 @@ def test_wheel_scrolls_form_without_changing_answers(tmp_path, monkeypatch, ques
     QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path / "settings"))
     templates = tmp_path / "templates"
     templates.mkdir()
-    source = Path(__file__).parents[1] / "templates" / "tech-stack.md"
+    source = Path(__file__).parents[1] / "src" / "questionnaire_tool" / "resources" / "templates" / "tech-stack.md"
     (templates / source.name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
     window = MainWindow(tmp_path)
     monkeypatch.setattr(window, "error", lambda *args: pytest.fail(str(args)))
@@ -151,3 +152,45 @@ def test_wheel_scrolls_form_without_changing_answers(tmp_path, monkeypatch, ques
     assert window.answers == before_answers
     assert window.view.verticalScrollBar().value() > before_scroll
     window.close()
+
+
+def test_bundled_form_import_and_restart_without_companion_files(tmp_path, monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
+    QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path / "settings"))
+    data = tmp_path / "personal-data"
+    window = MainWindow(data, bundled_templates_directory())
+    errors = []
+    monkeypatch.setattr(window, "error", lambda *args: errors.append(args))
+    window.show()
+    QTest.qWait(50)
+    assert window.current.id == "tech-stack"
+    assert not (data / "templates").exists()
+    window.view.editors["project_name"].setText("Standalone")
+    imported_file = tmp_path / "new.md"
+    source = (bundled_templates_directory() / "tech-stack.md").read_text(encoding="utf-8")
+    imported_file.write_text(source.replace("id: tech-stack", "id: imported").replace(
+        'name: "Technology Stack Assessment"', 'name: "Importato"'), encoding="utf-8")
+    monkeypatch.setattr(QFileDialog, "getOpenFileName", lambda *args: (str(imported_file), ""))
+    window.import_template()
+    assert window.current.id == "imported"
+    assert window.sidebar.list.count() == 2
+    assert (data / "templates" / "imported.md").is_file()
+    assert (data / "drafts" / "tech-stack.json").is_file()
+    assert window.close()
+    reopened = MainWindow(data, bundled_templates_directory())
+    monkeypatch.setattr(reopened, "error", lambda *args: errors.append(args))
+    reopened.show()
+    QTest.qWait(50)
+    assert reopened.current.id == "imported"
+    reopened.open_template("tech-stack")
+    assert reopened.answers["project_name"] == "Standalone"
+    assert not errors
+    assert reopened.close()
+
+
+def test_default_data_location_comes_from_os_not_executable(tmp_path, monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    from PySide6.QtCore import QStandardPaths
+    monkeypatch.setattr(QStandardPaths, "writableLocation", lambda location: str(tmp_path / "os-data"))
+    assert default_data_directory() == tmp_path / "os-data"
