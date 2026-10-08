@@ -113,6 +113,7 @@ Con la `.venv` attivata puoi usare `python -m pytest -q` su entrambi. La configu
 | `tests/test_core.py` | Parser, modelli, discovery, bozze, progresso ed export |
 | `tests/test_distribution.py` | Risorse incorporate, importazione e copia iniziale dei dati |
 | `tests/test_ui_smoke.py` | Compilazione Qt, autosalvataggio, riapertura, preview, export, rotella e importazione |
+| `tests/test_release.py` | Incrementi di versione, ripristino su errore e commit/tag/push in repository temporanei |
 
 I test Qt impostano `QT_QPA_PLATFORM=offscreen` se non è già definita e usano dati temporanei. Non richiedono interazione con finestre durante l'esecuzione. Se nuovi comportamenti coinvolgono la UI, verifica anche il relativo flusso su un desktop reale.
 
@@ -130,4 +131,4 @@ Per un controllo manuale:
 
 L'app scrive `appdraft.log` nella cartella dati in uso. Il log registra i template scoperti, il numero di problemi di discovery e i traceback degli errori non gestiti. Gli errori gestiti vengono mostrati nei dialog; non tutti producono un traceback nel log.
 
-Per modificare il modello di un template vedi [templates.md](templates.md); per produrre un eseguibile vedi [packaging.md](packaging.md). Aggiorna la pagina interessata quando cambi un comando, un formato o un comportamento pubblico.
+Per modificare il modello di un template vedi [templates.md](templates.md); per produrre un eseguibile vedi [packaging.md](packaging.md); per incrementare la versione e creare commit e tag vedi [releases.md](releases.md). Aggiorna la pagina interessata quando cambi un comando, un formato o un comportamento pubblico.

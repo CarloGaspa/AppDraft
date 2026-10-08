@@ -85,4 +85,4 @@ Prima di un aggiornamento conserva un backup delle bozze e dei template personal
 
 La spec corrente non configura firma Windows, firma macOS o notarizzazione. Le build locali sono quindi non firmate e il sistema può mostrarne avvisi o impedirne l'apertura secondo le proprie impostazioni. La firma/notarizzazione è un passaggio di release successivo per distribuire pubblicamente l'app.
 
-Non sono inclusi installer, aggiornamenti automatici o un processo di pubblicazione. `build/` e `dist/` sono artefatti generati ed esclusi da Git; chi clona la repo deve costruire la propria app oppure ricevere un artefatto già prodotto.
+Lo [script di rilascio](releases.md) coordina versione, test, build opzionale, commit e tag, con push opzionale. Non sono inclusi installer, aggiornamenti automatici o pubblicazione degli artefatti. `build/` e `dist/` sono artefatti generati ed esclusi da Git; chi clona la repo deve costruire la propria app oppure ricevere un artefatto già prodotto.

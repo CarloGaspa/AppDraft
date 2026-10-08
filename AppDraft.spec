@@ -1,10 +1,12 @@
 """Windows: un solo .exe. macOS: una .app con tutte le risorse incluse."""
 import sys
+import tomllib
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files
 
 root = Path(SPECPATH)
+project_version = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
 icons = root / "src" / "questionnaire_tool" / "resources" / "icons"
 analysis = Analysis(
     [str(root / "app.py")],
@@ -32,7 +34,7 @@ if sys.platform == "darwin":
     app = BUNDLE(
         collected, name="AppDraft.app", bundle_identifier="app.appdraft.desktop",
         icon=str(icons / "appdraft.icns"),
-        info_plist={"CFBundleDisplayName": "AppDraft", "CFBundleShortVersionString": "0.1.0",
+        info_plist={"CFBundleDisplayName": "AppDraft", "CFBundleShortVersionString": project_version,
                     "NSHighResolutionCapable": True},
     )
 else:

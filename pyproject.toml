@@ -24,3 +24,7 @@ questionnaire_tool = ["resources/templates/*.md", "resources/icons/*"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+
+[tool.release]
+checks = [["{python}", "-m", "pytest", "-q"]]
+build = ["{python}", "-m", "PyInstaller", "--noconfirm", "--clean", "AppDraft.spec"]
